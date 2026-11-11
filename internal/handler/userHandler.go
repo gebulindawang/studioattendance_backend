@@ -6,10 +6,12 @@ import (
 	"StudioAttendance_backend/internal/repository"
 	"StudioAttendance_backend/internal/response"
 	"StudioAttendance_backend/internal/util"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 func Register(c *gin.Context) {
@@ -39,7 +41,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	token, err := util.GenToken(user.ID, user.Username, int(user.Role))
+	token, err := util.GenToken(select_user.ID, select_user.Username, int(select_user.Role))
 
 	if err != nil {
 		response.FailErr(c, http.StatusInternalServerError, "签发token失败", err)
@@ -50,17 +52,34 @@ func Login(c *gin.Context) {
 }
 
 func UserInfo(c *gin.Context) {
-	username := c.GetString(middleware.CtxUsername)
-	u, err := repository.FindUserByUsername(username)
+	userID, err := middleware.CurrentUserID(c)
 	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "该用户不存在")
+		response.Fail(c, http.StatusUnauthorized, "登陆状态失效,请重新登录")
+		return
+	}
+	u, err := repository.FindUserByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			response.Fail(c, http.StatusNotFound, "该用户不存在")
+			return
+		}
+		response.FailErr(c, http.StatusInternalServerError, "查询用户失败", err)
 		return
 	}
 	response.Ok(c, u)
 }
 
-func RegisterUserRoutes(rg *gin.RouterGroup) {
+func ListUsers(c *gin.Context) {
+	u, err := repository.ListUsers()
+	if err != nil {
+		response.FailErr(c, http.StatusBadRequest, "查询失败", err)
+		return
+	}
+	response.Ok(c, u)
+}
+
+func RegisterUserRoutes(rg *gin.RouterGroup, auth gin.HandlerFunc) {
 	rg.POST("/register", Register)
 	rg.POST("/login", Login)
-	rg.GET("/me",UserInfo)
+	rg.GET("/me", auth, UserInfo)
 }

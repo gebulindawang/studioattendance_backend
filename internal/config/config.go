@@ -21,6 +21,11 @@ var (
 	OSSBucket          string
 	OSSAccessKeyID     string
 	OSSAccessKeySecret string
+
+	// DeepSeek
+	DeepSeekAPIKey  string
+	DeepSeekBaseURL string
+	DeepSeekModel   string
 )
 
 func Load() {
@@ -40,8 +45,11 @@ func Load() {
 	OSSBucket = getEnv("OSS_BUCKET", "")
 	OSSAccessKeyID = getEnv("OSS_ACCESS_KEY_ID", "")
 	OSSAccessKeySecret = getEnv("OSS_ACCESS_KEY_SECRET", "")
-}
 
+	DeepSeekAPIKey = getEnv("DEEPSEEK_API_KEY", "")
+	DeepSeekBaseURL = getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+	DeepSeekModel = getEnv("DEEPSEEK_MODEL", "deepseek-flash")
+}
 
 func getEnv(key, defaultVal string) string {
 	if val := os.Getenv(key); val != "" {
