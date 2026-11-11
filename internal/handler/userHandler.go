@@ -19,7 +19,8 @@ func Register(c *gin.Context) {
 	if err := c.ShouldBindJSON(&user); err != nil {
 		panic(err)
 	}
-	err := repository.Register(user)
+	userID,_:= middleware.CurrentUserID(c)
+	err := repository.Register(user,userID)
 	if err != nil{
 		response.Fail(c,http.StatusBadRequest,"注册失败，请重试")
 		return
@@ -80,6 +81,10 @@ func ListUsers(c *gin.Context) {
 		return
 	}
 	response.Ok(c, u)
+}
+
+func Logout(c *gin.Context){
+
 }
 
 func RegisterUserRoutes(rg *gin.RouterGroup, auth gin.HandlerFunc) {

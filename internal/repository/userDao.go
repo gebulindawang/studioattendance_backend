@@ -6,11 +6,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func Register(user model.User)error {
+func Register(user model.User,userID int)error {
 	secret_password,err := bcrypt.GenerateFromPassword([]byte(user.Password),bcrypt.DefaultCost)
 	if err  != nil{
 		return  err
 	}
+	user.CreateBy = &userID
+	user.UpdateBy = &userID
 	user.Password = string(secret_password)
 	DB.Create(&user)
 	return nil
