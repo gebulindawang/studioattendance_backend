@@ -2,10 +2,18 @@ package repository
 
 import (
 	"StudioAttendance_backend/internal/model"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
-func Register(user model.User) {
+func Register(user model.User)error {
+	secret_password,err := bcrypt.GenerateFromPassword([]byte(user.Password),bcrypt.DefaultCost)
+	if err  != nil{
+		return  err
+	}
+	user.Password = string(secret_password)
 	DB.Create(&user)
+	return nil
 }
 
 func FindUserByUsername(username string) (model.User, error) {
