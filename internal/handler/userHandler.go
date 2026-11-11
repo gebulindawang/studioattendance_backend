@@ -91,4 +91,5 @@ func RegisterUserRoutes(rg *gin.RouterGroup, auth gin.HandlerFunc) {
 	rg.POST("/register", Register)
 	rg.POST("/login", Login)
 	rg.GET("/me", auth, UserInfo)
+	rg.GET("/", ListUsers)
 }

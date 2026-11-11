@@ -12,7 +12,7 @@ import (
 )
 
 
-func ParseScheduleImage(URL string)([]model.Course,error){
+func ParseScheduleImage(URL string)([]model.Schedule,error){
 	client := openai.NewClient(
 		option.WithAPIKey(os.Getenv("DEEPSEEK_API_KEY")),
 		option.WithBaseURL("https://api.deepseek.com"),
@@ -60,9 +60,9 @@ func ParseScheduleImage(URL string)([]model.Course,error){
 	content := strings.TrimSpace(
 		completion.Choices[0].Message.Content,
 	)
-	var courses []model.Course
-	if err := json.Unmarshal([]byte(content), &courses); err != nil {
+	var schedule []model.Schedule
+	if err := json.Unmarshal([]byte(content), &schedule); err != nil {
 		return nil, err
 	}
-	return courses, nil
+	return schedule, nil
 }

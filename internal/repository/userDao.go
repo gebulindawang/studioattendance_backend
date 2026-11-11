@@ -13,6 +13,7 @@ func Register(user model.User,userID int)error {
 	}
 	user.CreateBy = &userID
 	user.UpdateBy = &userID
+	user.Role = 1
 	user.Password = string(secret_password)
 	DB.Create(&user)
 	return nil
@@ -41,8 +42,8 @@ func UpdateUser(user model.User) (int, error) {
 	return int(result.RowsAffected), result.Error
 }
 
-func ListUsers() ([]model.User, error) {
-	var users []model.User
-	result := DB.Find(&users)
+func ListUsers() ([]model.UserPO, error) {
+	var users []model.UserPO
+	result := DB.Where("role > 0").Find(&users)
 	return users, result.Error
 }

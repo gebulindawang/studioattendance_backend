@@ -2,15 +2,15 @@ package handler
 
 import (
 	"StudioAttendance_backend/internal/middleware"
+	"StudioAttendance_backend/internal/model"
 	"StudioAttendance_backend/internal/repository"
 	"StudioAttendance_backend/internal/response"
 	"StudioAttendance_backend/internal/util"
 	"net/http"
 	"path/filepath"
-
+	"strconv"
 
 	"github.com/gin-gonic/gin"
-
 )
 
 func UploadScheduleImage(c *gin.Context) {
@@ -62,10 +62,45 @@ func ParseScheduleImage(c *gin.Context) {
 		return
 	}
 	response.Ok(c,courses)
+}
 
+func ListSchedules(c *gin.Context){
+	userIDStr := c.Query("id")
+	userID,err := strconv.Atoi(userIDStr)
+	if err != nil{
+		panic(err)
+	}
+	schedules,err := repository.ListSchedules(&userID)
+	if err != nil{
+		response.Fail(c,http.StatusBadRequest,err.Error())
+		return
+	}
+	response.Ok(c,schedules)
+}
+
+func CreateSchedules(c *gin.Context){
+	var schedules []model.Schedule
+	if err :=repository.CreateSchedules(schedules);err != nil{
+		response.Fail(c,http.StatusBadRequest,err.Error())
+		return
+	}
+	response.OkMsg(c,"保存课表成功")
+}
+
+func UpdateSchedule(c *gin.Context){
+	var schedule model.Schedule
+	c.ShouldBindJSON(&schedule)
+	if err := repository.UpdateSchedules(schedule);err != nil{
+		response.FailErr(c,http.StatusBadRequest,"更改数据失败",err)
+		return
+	}
+	response.OkMsg(c,"更改成功")
 }
 
 func RegisterScheduleRoutes(rg *gin.RouterGroup) {
 	rg.POST("/upload", UploadScheduleImage)
 	rg.GET("/parse", ParseScheduleImage)
+	rg.GET("/",ListSchedules)
+	rg.POST("/",CreateSchedules)
+	rg.PUT("/",UpdateSchedule)
 }

@@ -48,3 +48,7 @@ type UserPO struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"` // gorm.DeletedAt 启用软删除,查询自动过滤已删记录
 }
+
+func (UserPO) TableName() string{
+	return "users"
+}

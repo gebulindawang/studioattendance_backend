@@ -22,6 +22,25 @@ func FindLatestScheduleImage(userID int) (string, error) {
 	return scheduleImage.ImagesUrl, nil
 }
 
+func ListSchedules(userID *int)([]model.Schedule,error){
+	var schedules []model.Schedule
+	query := DB.Model(&model.Schedule{})
+	if userID != nil {
+		query = query.Where("user_id = ?" , *userID)
+	}
+	result := query.Find(&schedules)
+	return schedules,result.Error
+}
+
+func CreateSchedules(schedules []model.Schedule) error{
+	result := DB.Create(&schedules)
+	return result.Error
+}
+
+func UpdateSchedules(schedule model.Schedule)error{
+	return  DB.Save(&schedule).Error
+}
+
 func CreateScheduleImage(url string, userID int) error {
 	var ScheduleImage model.ScheduleImage = model.ScheduleImage{UserID: userID, ImagesUrl: url}
 	result := DB.Create(&ScheduleImage)
