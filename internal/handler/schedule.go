@@ -56,6 +56,17 @@ func failTargetUser(c *gin.Context, err error) {
 }
 
 func UploadScheduleImage(c *gin.Context) {
+	userId, _ := middleware.CurrentUserID(c)
+	amount, err := repository.FindImagesAmountByUserId(userId)
+	if err != nil {
+		response.FailErr(c, http.StatusBadRequest, "查询失败", err)
+		return
+	}
+	if amount >= 3 {
+		response.Fail(c, http.StatusBadRequest, "上传图片已到达最大限制")
+		return
+	}
+
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.FailErr(c, http.StatusBadRequest, "接受文件失败", err)
@@ -83,7 +94,21 @@ func UploadScheduleImage(c *gin.Context) {
 		return
 	}
 	response.Ok(c, url)
+}
 
+func FindCountByUserId(c *gin.Context) {
+	userId, err := middleware.CurrentUserID(c)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "用户状态异常")
+		return
+	}
+
+	count, err := repository.FindImagesAmountByUserId(userId)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "查询数量失败")
+		return
+	}
+	response.Ok(c, count)
 }
 
 func ParseScheduleImage(c *gin.Context) {
@@ -161,17 +186,32 @@ func UpdateSchedule(c *gin.Context) {
 
 func FindScheduleImageByID(c *gin.Context) {
 	id := c.Param("id")
-	userID, err := strconv.Atoi(id)	
+	userID, err := strconv.Atoi(id)
 	fmt.Println(userID)
 	if err != nil {
-		response.FailErr(c,http.StatusBadRequest,"用户id失败",err)
+		response.FailErr(c, http.StatusBadRequest, "用户id失败", err)
 		return
 	}
-	result , err:= repository.FindScheduleImageByID(userID)
-	if err != nil{
+	result, err := repository.FindScheduleImageByID(userID)
+	if err != nil {
 		panic(err)
 	}
-	response.Ok(c,result)
+	response.Ok(c, result)
+	
+}
+
+func DeleteScheduleByUserId(c *gin.Context) {
+	// 管理员带 ?user_id= 重置指定成员的课表;不带则重置自己的
+	userId, err := resolveTargetUser(c)
+	if err != nil {
+		failTargetUser(c, err)
+		return
+	}
+	if err := repository.DeleteScheduleByUserId(userId); err != nil {
+		response.Fail(c, http.StatusBadRequest, "重置失败,请稍后重试")
+		return
+	}
+	response.OkMsg(c, "重置课表成功")
 }
 
 func RegisterScheduleRoutes(rg *gin.RouterGroup) {
@@ -180,5 +220,7 @@ func RegisterScheduleRoutes(rg *gin.RouterGroup) {
 	rg.GET("/", ListSchedules)
 	rg.POST("/", CreateSchedules)
 	rg.PUT("/", UpdateSchedule)
-	rg.GET("/:id",FindScheduleImageByID)
+	rg.GET("/:id", FindScheduleImageByID)
+	rg.GET("/count", FindCountByUserId)
+	rg.DELETE("/resove",DeleteScheduleByUserId)
 }

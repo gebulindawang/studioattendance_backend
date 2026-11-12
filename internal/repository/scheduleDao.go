@@ -13,8 +13,8 @@ func FindScheduleImageByID(userId int) ([]string, error) {
 		return nil, result.Error
 	}
 	var URLS []string
-	for _,scheduleImage  := range ScheduleImages{
-		URLS = append(URLS,scheduleImage.ImagesUrl)
+	for _, scheduleImage := range ScheduleImages {
+		URLS = append(URLS, scheduleImage.ImagesUrl)
 	}
 	return URLS, nil
 }
@@ -30,17 +30,17 @@ func FindLatestScheduleImage(userID int) (string, error) {
 }
 
 // 动态查询课表
-func ListSchedules(userID *int)([]model.Schedule,error){
+func ListSchedules(userID *int) ([]model.Schedule, error) {
 	var schedules []model.Schedule
 	query := DB.Model(&model.Schedule{})
 	if userID != nil {
-		query = query.Where("user_id = ?" , *userID)
+		query = query.Where("user_id = ?", *userID)
 	}
 	result := query.Find(&schedules)
-	return schedules,result.Error
+	return schedules, result.Error
 }
 
-func CreateSchedules(schedules []model.Schedule) error{
+func CreateSchedules(schedules []model.Schedule) error {
 	result := DB.Create(&schedules)
 	return result.Error
 }
@@ -60,12 +60,32 @@ func ReplaceUserSchedules(userID int, schedules []model.Schedule) error {
 	})
 }
 
-func UpdateSchedules(schedule model.Schedule)error{
-	return  DB.Save(&schedule).Error
+func UpdateSchedules(schedule model.Schedule) error {
+	return DB.Save(&schedule).Error
 }
 
 func CreateScheduleImage(url string, userID int) error {
 	var ScheduleImage model.ScheduleImage = model.ScheduleImage{UserID: userID, ImagesUrl: url}
 	result := DB.Create(&ScheduleImage)
 	return result.Error
+}
+
+func FindImagesAmountByUserId(userId int) (int, error) {
+	var count int64 
+	err := DB.Model(&model.ScheduleImage{}).
+	Where("user_id = ?", userId ).
+	Count(&count)
+	return int(count),err.Error
+}
+
+func DeleteScheduleByUserId(userId int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userId).Delete(&model.Schedule{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", userId).Delete(&model.ScheduleImage{}).Error; err != nil {
+			return err
+		}
+		return nil
+	})
 }
