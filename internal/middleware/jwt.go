@@ -58,3 +58,17 @@ func CurrentUserID(c *gin.Context) (int, error) {
 	}
 	return id, nil
 }
+
+// CurrentUserRole 从上下文取出当前登录用户的角色(0成员 1管理员)。
+// 必须在 JWTAuth 中间件之后的 handler 里调用。
+func CurrentUserRole(c *gin.Context) (int, error) {
+	v, exists := c.Get(CtxRole)
+	if !exists {
+		return 0, errors.New("用户未登录")
+	}
+	role, ok := v.(int)
+	if !ok {
+		return 0, errors.New("用户身份类型异常")
+	}
+	return role, nil
+}

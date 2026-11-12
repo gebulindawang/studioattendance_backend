@@ -32,9 +32,10 @@ func ParseScheduleImage(URL string)([]model.Schedule,error){
         end_section   结束节次，整数
         start_week    起始周，整数
         end_week      结束周，整数
-        week_type     周次类型，只能是 "全周"、"单周"、"双周" 之一
+        week_type     周次类型，整数：0=每周，1=单周，2=双周。不要用"全周"这种文字
+        confidence    你对本条识别结果的确信度，0 到 1 之间的小数，如 0.92
 
-        无法识别的字段：字符串填空字符串，整数填 0，week_type 填 "全周"。
+        无法识别的字段：字符串填空字符串，整数填 0，week_type 填 0。
     `
 	completion , err := client.Chat.Completions.New(
 		context.Background(),

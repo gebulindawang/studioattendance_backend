@@ -44,6 +44,7 @@ func UpdateUser(user model.User) (int, error) {
 
 func ListUsers() ([]model.UserPO, error) {
 	var users []model.UserPO
-	result := DB.Where("role > 0").Find(&users)
+	// 成员管理页需要看到全部账号(含 role=0 的成员和禁用的),不按角色过滤
+	result := DB.Find(&users)
 	return users, result.Error
 }

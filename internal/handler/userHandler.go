@@ -83,10 +83,6 @@ func ListUsers(c *gin.Context) {
 	response.Ok(c, u)
 }
 
-func Logout(c *gin.Context){
-
-}
-
 func RegisterUserRoutes(rg *gin.RouterGroup, auth gin.HandlerFunc) {
 	rg.POST("/register", Register)
 	rg.POST("/login", Login)
