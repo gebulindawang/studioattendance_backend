@@ -22,7 +22,6 @@ type Schedule struct {
 	StartWeek    int       `json:"start_week"`
 	EndWeek      int       `json:"end_week"`
 	WeekType     int8      `json:"week_type"` // 0每周 1单周 2双周
-	Semester     string    `json:"semester"`  // 如 2026-1
 	Confidence   float64   `json:"confidence,omitempty" gorm:"-"` // LLM 识别置信度 0~1,不落库;来自数据库的记录没有该字段
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`

@@ -19,10 +19,10 @@ func Register(c *gin.Context) {
 	if err := c.ShouldBindJSON(&user); err != nil {
 		panic(err)
 	}
-	userID,_:= middleware.CurrentUserID(c)
-	err := repository.Register(user,userID)
-	if err != nil{
-		response.Fail(c,http.StatusBadRequest,"注册失败，请重试")
+	userID, _ := middleware.CurrentUserID(c)
+	err := repository.Register(user, userID)
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, "注册失败，请重试")
 		return
 	}
 	response.OkMsg(c, "注册成功")
