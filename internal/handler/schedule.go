@@ -188,10 +188,7 @@ func FindScheduleImageByID(c *gin.Context) {
 	id := c.Param("id")
 	userID, err := strconv.Atoi(id)
 	fmt.Println(userID)
-	if err != nil {
-		response.FailErr(c, http.StatusBadRequest, "用户id失败", err)
-		return
-	}
+	util.BindingModelException(err)
 	result, err := repository.FindScheduleImageByID(userID)
 	if err != nil {
 		panic(err)
@@ -214,6 +211,16 @@ func DeleteScheduleByUserId(c *gin.Context) {
 	response.OkMsg(c, "重置课表成功")
 }
 
+func FindSemesterAndSectionTime(c *gin.Context){
+	result,err := repository.FindSemesterAndSectionTime()
+	if err != nil{
+		response.FailErr(c,http.StatusBadRequest,"查询错误",err)
+		return
+	}
+	
+	response.Ok(c,result)
+}
+
 func RegisterScheduleRoutes(rg *gin.RouterGroup) {
 	rg.POST("/upload", UploadScheduleImage)
 	rg.GET("/parse", ParseScheduleImage)
@@ -223,4 +230,5 @@ func RegisterScheduleRoutes(rg *gin.RouterGroup) {
 	rg.GET("/:id", FindScheduleImageByID)
 	rg.GET("/count", FindCountByUserId)
 	rg.DELETE("/resove",DeleteScheduleByUserId)
+	rg.GET("/semester",FindSemesterAndSectionTime)
 }

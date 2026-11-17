@@ -71,11 +71,11 @@ func CreateScheduleImage(url string, userID int) error {
 }
 
 func FindImagesAmountByUserId(userId int) (int, error) {
-	var count int64 
+	var count int64
 	err := DB.Model(&model.ScheduleImage{}).
-	Where("user_id = ?", userId ).
-	Count(&count)
-	return int(count),err.Error
+		Where("user_id = ?", userId).
+		Count(&count)
+	return int(count), err.Error
 }
 
 func DeleteScheduleByUserId(userId int) error {
@@ -88,4 +88,25 @@ func DeleteScheduleByUserId(userId int) error {
 		}
 		return nil
 	})
+}
+
+func FindSemesterAndSectionTime() (model.SemesterConfig, error) {
+	var sectionTime []model.SectionTime
+	var semester model.Semester
+
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if err := DB.Find(&sectionTime).Error; err != nil {
+			return err
+		}
+		if err := DB.Find(&semester).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	var result model.SemesterConfig
+	result.Semester = semester
+	result.SectionTime = sectionTime
+
+	return result, err
 }

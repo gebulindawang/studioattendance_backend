@@ -36,7 +36,6 @@ func CheckIn(userId int, section int, week int) error {
 	classTime := time.Date(now.Year(), now.Month(), now.Day(),
 		t.Hour(), t.Minute(), t.Second(), 0, now.Location())
 
-	// 同一用户同一课节当天只能签一次
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var count int64
 	err = DB.Model(&model.CheckinRecord{}).
