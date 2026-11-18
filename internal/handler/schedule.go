@@ -188,13 +188,13 @@ func FindScheduleImageByID(c *gin.Context) {
 	id := c.Param("id")
 	userID, err := strconv.Atoi(id)
 	fmt.Println(userID)
-	util.BindingModelException(err)
+	util.BindingModelException(err, c)
 	result, err := repository.FindScheduleImageByID(userID)
 	if err != nil {
 		panic(err)
 	}
 	response.Ok(c, result)
-	
+
 }
 
 func DeleteScheduleByUserId(c *gin.Context) {
@@ -211,14 +211,28 @@ func DeleteScheduleByUserId(c *gin.Context) {
 	response.OkMsg(c, "重置课表成功")
 }
 
-func FindSemesterAndSectionTime(c *gin.Context){
-	result,err := repository.FindSemesterAndSectionTime()
-	if err != nil{
-		response.FailErr(c,http.StatusBadRequest,"查询错误",err)
+func FindSemesterAndSectionTime(c *gin.Context) {
+	result, err := repository.FindSemesterAndSectionTime()
+	if err != nil {
+		response.FailErr(c, http.StatusBadRequest, "查询错误", err)
 		return
 	}
-	
-	response.Ok(c,result)
+
+	response.Ok(c, result)
+}
+
+func UpdateSemesterOrSectionTime(c *gin.Context) {
+	var semesterConfig model.SemesterConfig
+	if err := c.ShouldBindJSON(&semesterConfig); err != nil {
+		util.BindingModelException(err, c)
+		return
+	}
+
+	if err := repository.UpdateSemesterOrSectionTime(semesterConfig); err != nil {
+		response.FailErr(c, http.StatusBadRequest, "修改失败", err)
+		return
+	}
+	response.OkMsg(c, "修改成功")
 }
 
 func RegisterScheduleRoutes(rg *gin.RouterGroup) {
@@ -229,6 +243,7 @@ func RegisterScheduleRoutes(rg *gin.RouterGroup) {
 	rg.PUT("/", UpdateSchedule)
 	rg.GET("/:id", FindScheduleImageByID)
 	rg.GET("/count", FindCountByUserId)
-	rg.DELETE("/resove",DeleteScheduleByUserId)
-	rg.GET("/semester",FindSemesterAndSectionTime)
+	rg.DELETE("/resove", DeleteScheduleByUserId)
+	rg.GET("/semester", FindSemesterAndSectionTime)
+	rg.POST("/updateConfig", UpdateSemesterOrSectionTime)
 }

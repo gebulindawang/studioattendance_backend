@@ -58,11 +58,11 @@ func CheckIn(userId int, section int, week int) error {
 
 	elapsed := now.Sub(classTime)
 	switch {
-	case elapsed < -20 * time.Minute:
+	case elapsed < -20*time.Minute:
 		return errors.New("未到签到时间")
 	case elapsed <= 0:
 		record.Status = model.CheckinNormal
-	case elapsed <= 5 * time.Minute:
+	case elapsed <= 5*time.Minute:
 		record.Status = model.CheckinLate
 	default:
 		record.Status = model.CheckinAbsent
@@ -70,4 +70,3 @@ func CheckIn(userId int, section int, week int) error {
 
 	return DB.Create(&record).Error
 }
-

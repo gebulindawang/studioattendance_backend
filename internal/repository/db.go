@@ -11,9 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-
 var DB *gorm.DB
-
 
 func InitDB() error {
 
@@ -29,13 +27,12 @@ func InitDB() error {
 		return fmt.Errorf("连接数据库失败: %w", err)
 	}
 
-
 	sqlDB, err := db.DB()
 	if err != nil {
 		return err
 	}
-	sqlDB.SetMaxIdleConns(10)                  
-	sqlDB.SetMaxOpenConns(100)                
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
 	DB = db

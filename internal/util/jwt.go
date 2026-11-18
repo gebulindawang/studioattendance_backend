@@ -16,18 +16,18 @@ type MyClaims struct {
 	jwt.RegisteredClaims
 }
 
-func GenToken(userID int,username string,role int)(string ,error){
+func GenToken(userID int, username string, role int) (string, error) {
 	claims := MyClaims{
-		UserID: userID,
+		UserID:   userID,
 		Username: username,
-		Role: role,
+		Role:     role,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(2*time.Hour)),
-			IssuedAt: jwt.NewNumericDate(time.Now()),
-			Issuer: "gebulinking",
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(2 * time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			Issuer:    "gebulinking",
 		},
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
 }
 

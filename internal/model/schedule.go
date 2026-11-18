@@ -35,7 +35,7 @@ type ScheduleImage struct {
 type SectionTime struct {
 	ID            int
 	SectionNumber string
-	StartTime 	  string
+	StartTime     string
 	EndTime       string
 }
 
@@ -55,8 +55,8 @@ func (s *Semester) TableName() string {
 }
 
 type SemesterConfig struct {
-    Semester    Semester    `json:"semester"`
-    SectionTime []SectionTime `json:"section_time"`
+	Semester    *Semester     `json:"semester"`
+	SectionTime []SectionTime `json:"section_time"`
 }
 
 func (s *Schedule) TableName() string {
@@ -66,4 +66,3 @@ func (s *Schedule) TableName() string {
 func (si *ScheduleImage) TableName() string {
 	return "schedules_image"
 }
-

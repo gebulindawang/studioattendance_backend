@@ -105,8 +105,39 @@ func FindSemesterAndSectionTime() (model.SemesterConfig, error) {
 	})
 
 	var result model.SemesterConfig
-	result.Semester = semester
+	result.Semester = &semester
 	result.SectionTime = sectionTime
 
 	return result, err
+}
+
+func UpdateSemesterOrSectionTime(semesterConfig model.SemesterConfig) error {
+	semester := semesterConfig.Semester
+	if semester != nil {
+		err := DB.Model(&model.Semester{}).
+			Where("id = ?", semester.ID).
+			Updates(model.Semester{
+				StartDate:  semester.StartDate,
+				EndDate:    semester.EndDate,
+				TotalWeeks: semester.TotalWeeks,
+			}).Error
+		if err != nil {
+			return err
+		}
+	}
+
+	var sectionTime []model.SectionTime = semesterConfig.SectionTime
+	for _, value := range sectionTime {
+		err := DB.Model(&model.SectionTime{}).
+			Where("id = ?", value.ID).
+			Updates(model.SectionTime{
+				SectionNumber: value.SectionNumber,
+				StartTime:     value.StartTime,
+				EndTime:       value.EndTime,
+			}).Error
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

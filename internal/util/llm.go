@@ -11,13 +11,11 @@ import (
 	"github.com/openai/openai-go/v3/option"
 )
 
-
-func ParseScheduleImage(URL string)([]model.Schedule,error){
+func ParseScheduleImage(URL string) ([]model.Schedule, error) {
 	client := openai.NewClient(
 		option.WithAPIKey(os.Getenv("DEEPSEEK_API_KEY")),
 		option.WithBaseURL("https://api.deepseek.com"),
 	)
-
 
 	prompt := `
         请识别这张大学课表图片，提取所有课程信息。
@@ -37,7 +35,7 @@ func ParseScheduleImage(URL string)([]model.Schedule,error){
 
         无法识别的字段：字符串填空字符串，整数填 0，week_type 填 0。
     `
-	completion , err := client.Chat.Completions.New(
+	completion, err := client.Chat.Completions.New(
 		context.Background(),
 		openai.ChatCompletionNewParams{
 			Model: openai.ChatModel("deepseek-flash"),
@@ -55,8 +53,8 @@ func ParseScheduleImage(URL string)([]model.Schedule,error){
 			},
 		},
 	)
-	if err != nil{
-		return nil,err
+	if err != nil {
+		return nil, err
 	}
 	content := strings.TrimSpace(
 		completion.Choices[0].Message.Content,
