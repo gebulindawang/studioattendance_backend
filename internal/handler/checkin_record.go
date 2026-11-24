@@ -1,10 +1,15 @@
 package handler
 
 import (
+	"StudioAttendance_backend/internal/config"
+	"StudioAttendance_backend/internal/middleware"
+	"StudioAttendance_backend/internal/model"
 	"StudioAttendance_backend/internal/repository"
 	"StudioAttendance_backend/internal/response"
+	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -12,37 +17,55 @@ import (
 func ListRecord(c *gin.Context) {
 	result, err := repository.ListCheckinRecord()
 	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "查询失败")
+		response.FailErr(c, http.StatusInternalServerError, "查询考勤记录失败", err)
+		return
+	}
+	response.Ok(c, gin.H{"date": time.Now().In(config.AttendanceLocation).Format(time.DateOnly), "records": result})
+}
+
+func todayAttendance(c *gin.Context) {
+	userID, _ := middleware.CurrentUserID(c)
+	result, err := repository.GetTodayAttendance(userID, time.Now().In(config.AttendanceLocation))
+	if err != nil {
+		response.FailErr(c, http.StatusInternalServerError, "查询今日签到失败", err)
 		return
 	}
 	response.Ok(c, result)
 }
 
-// 签到关键接口
 func checkIn(c *gin.Context) {
-	userId, err := strconv.Atoi(c.Param("id"))
-	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "用户 id 格式错误")
-		return
-	}
 	section, err := strconv.Atoi(c.Param("section"))
-	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "课节编号格式错误")
+	if err != nil || section <= 0 {
+		response.Fail(c, http.StatusBadRequest, "节次编号不合法")
 		return
 	}
-	week, err := strconv.Atoi(c.Param("week"))
-	if err != nil {
-		response.Fail(c, http.StatusBadRequest, "周次格式错误")
+	userID, _ := middleware.CurrentUserID(c)
+	record, err := repository.CheckIn(userID, section, time.Now().In(config.AttendanceLocation))
+	switch {
+	case err == nil:
+		response.Ok(c, record)
+	case errors.Is(err, repository.ErrCheckinUnavailable), errors.Is(err, repository.ErrCheckinExempted),
+		errors.Is(err, repository.ErrCheckinTooEarly), errors.Is(err, repository.ErrCheckinClosed),
+		errors.Is(err, repository.ErrCheckinDuplicate):
+		response.Fail(c, http.StatusConflict, err.Error())
+	default:
+		response.FailErr(c, http.StatusInternalServerError, "签到失败", err)
+	}
+}
+
+func settleAttendance(c *gin.Context) {
+	if err := repository.SettleAttendance(c.Request.Context(), time.Now().In(config.AttendanceLocation)); err != nil {
+		response.FailErr(c, http.StatusInternalServerError, "结算考勤失败", err)
 		return
 	}
-	if err := repository.CheckIn(userId, section, week); err != nil {
-		response.Fail(c, http.StatusBadRequest, err.Error())
-		return
-	}
-	response.Ok(c, nil)
+	response.OkMsg(c, "今日已结束的节次已结算")
 }
 
 func RegisterCheckInRecordRoutes(rg *gin.RouterGroup) {
-	rg.GET("/", ListRecord)
-	rg.GET("/checkIn/:id/:section/:week", checkIn)
+	admin := middleware.RequireRole(model.RoleAdmin)
+	member := middleware.RequireRole(model.RoleMember)
+	rg.GET("/", admin, ListRecord)
+	rg.GET("/today", member, todayAttendance)
+	rg.POST("/checkin/:section", member, checkIn)
+	rg.PUT("/record", admin, settleAttendance)
 }

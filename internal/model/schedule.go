@@ -27,9 +27,32 @@ type Schedule struct {
 }
 
 type ScheduleImage struct {
-	ID        int
-	UserID    int
-	ImagesUrl string
+	ID        int        `json:"id"`
+	UserID    int        `json:"-"`
+	ImagesUrl string     `json:"url"`
+	CreatedAt *time.Time `json:"uploaded_at"`
+	Reviewed  *bool      `json:"-"`
+}
+
+const MaxScheduleUploads = 3
+
+type ScheduleSummary struct {
+	Key            string     `json:"key"`
+	Username       string     `json:"username"`
+	Nickname       string     `json:"nickname"`
+	Status         string     `json:"status"`
+	UploadCount    int        `json:"upload_count"`
+	MaxUploads     int        `json:"max_uploads"`
+	LastUploadedAt *time.Time `json:"last_uploaded_at"`
+	ConfirmedAt    *time.Time `json:"confirmed_at"`
+	CourseCount    int        `json:"course_count"`
+}
+
+type ScheduleDetail struct {
+	ScheduleSummary
+	LatestImage string          `json:"latest_image"`
+	Uploads     []ScheduleImage `json:"uploads"`
+	Courses     []Schedule      `json:"courses"`
 }
 
 type SectionTime struct {

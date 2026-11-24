@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"StudioAttendance_backend/internal/model"
+	"StudioAttendance_backend/internal/repository"
 	"StudioAttendance_backend/internal/response"
 	"StudioAttendance_backend/internal/util"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 const (
@@ -37,10 +40,34 @@ func JWTAuth() gin.HandlerFunc {
 			return
 		}
 
-		c.Set(CtxUserID, claims.UserID)
-		c.Set(CtxUsername, claims.Username)
-		c.Set(CtxRole, claims.Role)
+		user, err := repository.FindUserByID(claims.UserID)
+		if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && user.Status != model.StatusActive) {
+			response.Abort(c, http.StatusUnauthorized, "账号不存在或已禁用")
+			return
+		}
+		if err != nil {
+			response.Abort(c, http.StatusInternalServerError, "无法验证账号状态")
+			return
+		}
+		c.Set(CtxUserID, user.ID)
+		c.Set(CtxUsername, user.Username)
+		c.Set(CtxRole, int(user.Role))
 
+		c.Next()
+	}
+}
+
+func RequireRole(role int8) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		current, err := CurrentUserRole(c)
+		if err != nil {
+			response.Abort(c, http.StatusUnauthorized, "请先登录")
+			return
+		}
+		if current != int(role) {
+			response.Abort(c, http.StatusForbidden, "没有权限执行此操作")
+			return
+		}
 		c.Next()
 	}
 }

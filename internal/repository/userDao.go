@@ -4,19 +4,18 @@ import (
 	"StudioAttendance_backend/internal/model"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
-func Register(user model.User, userID int) error {
-	secret_password, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+func Register(user model.User) error {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-	user.CreateBy = &userID
-	user.UpdateBy = &userID
-	user.Role = 1
-	user.Password = string(secret_password)
-	DB.Create(&user)
-	return nil
+	user.Role = model.RoleMember
+	user.Status = model.StatusActive
+	user.Password = string(passwordHash)
+	return DB.Create(&user).Error
 }
 
 func FindUserByUsername(username string) (model.User, error) {
@@ -37,14 +36,21 @@ func FindUserByID(id int) (model.User, error) {
 	return select_user, result.Error
 }
 
-func UpdateUser(user model.User) (int, error) {
-	result := DB.Where("id = ?", user.ID).Save(&user)
-	return int(result.RowsAffected), result.Error
+func UpdateMemberStatus(id int, status int8, adminID int) error {
+	return DB.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.User{}).Where("id = ? AND role = ?", id, model.RoleMember).
+			Updates(map[string]any{"status": status, "update_by": adminID})
+		if result.Error != nil || result.RowsAffected > 0 {
+			return result.Error
+		}
+		var member model.User
+		return tx.Where("id = ? AND role = ?", id, model.RoleMember).Take(&member).Error
+	})
 }
 
 func ListUsers() ([]model.UserPO, error) {
-	var users []model.UserPO
+	users := make([]model.UserPO, 0)
 	// 成员管理页需要看到全部账号(含 role=0 的成员和禁用的),不按角色过滤
-	result := DB.Find(&users)
+	result := DB.Omit("password").Order("id").Find(&users)
 	return users, result.Error
 }

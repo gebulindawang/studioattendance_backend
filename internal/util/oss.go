@@ -46,9 +46,9 @@ func InitOSS() error {
 //	dir          对象目录前缀,如 "avatars"、"schedules"
 //	originalName 原始文件名,用于保留扩展名(决定浏览器如何解析 Content-Type)
 //	reader       文件内容;gin 里用 fileHeader.Open() 打开后传入
-func Upload(ctx context.Context, dir, originalName string, reader io.Reader) (string, error) {
+func Upload(ctx context.Context, dir, originalName string, reader io.Reader) (string, string, error) {
 	if ossClient == nil {
-		return "", fmt.Errorf("OSS 未初始化,请先调用 InitOSS")
+		return "", "", fmt.Errorf("OSS 未初始化,请先调用 InitOSS")
 	}
 
 	objectKey := genObjectKey(dir, originalName)
@@ -59,10 +59,18 @@ func Upload(ctx context.Context, dir, originalName string, reader io.Reader) (st
 		Body:   reader,
 	})
 	if err != nil {
-		return "", fmt.Errorf("上传 OSS 失败: %w", err)
+		return "", "", fmt.Errorf("上传 OSS 失败: %w", err)
 	}
 
-	return publicURL(objectKey), nil
+	return publicURL(objectKey), objectKey, nil
+}
+
+func DeleteUpload(ctx context.Context, objectKey string) error {
+	_, err := ossClient.DeleteObject(ctx, &oss.DeleteObjectRequest{
+		Bucket: oss.Ptr(config.OSSBucket),
+		Key:    oss.Ptr(objectKey),
+	})
+	return err
 }
 
 // SignURL 生成临时签名访问链接。

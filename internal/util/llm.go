@@ -1,20 +1,21 @@
 package util
 
 import (
+	"StudioAttendance_backend/internal/config"
 	"StudioAttendance_backend/internal/model"
 	"context"
 	"encoding/json"
-	"os"
+	"errors"
 	"strings"
 
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
 
-func ParseScheduleImage(URL string) ([]model.Schedule, error) {
+func ParseScheduleImage(ctx context.Context, URL string) ([]model.Schedule, error) {
 	client := openai.NewClient(
-		option.WithAPIKey(os.Getenv("DEEPSEEK_API_KEY")),
-		option.WithBaseURL("https://api.deepseek.com"),
+		option.WithAPIKey(config.DeepSeekAPIKey),
+		option.WithBaseURL(config.DeepSeekBaseURL),
 	)
 
 	prompt := `
@@ -36,9 +37,9 @@ func ParseScheduleImage(URL string) ([]model.Schedule, error) {
         无法识别的字段：字符串填空字符串，整数填 0，week_type 填 0。
     `
 	completion, err := client.Chat.Completions.New(
-		context.Background(),
+		ctx,
 		openai.ChatCompletionNewParams{
-			Model: openai.ChatModel("deepseek-flash"),
+			Model: openai.ChatModel(config.DeepSeekModel),
 			Messages: []openai.ChatCompletionMessageParamUnion{
 				openai.UserMessage(
 					[]openai.ChatCompletionContentPartUnionParam{
@@ -55,6 +56,9 @@ func ParseScheduleImage(URL string) ([]model.Schedule, error) {
 	)
 	if err != nil {
 		return nil, err
+	}
+	if len(completion.Choices) == 0 {
+		return nil, errors.New("课表识别未返回结果")
 	}
 	content := strings.TrimSpace(
 		completion.Choices[0].Message.Content,

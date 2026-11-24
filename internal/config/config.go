@@ -1,19 +1,23 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"time"
+	_ "time/tzdata"
 
 	"github.com/joho/godotenv"
 )
 
 var (
-	AppPort    string
-	DBHost     string
-	DBPort     string
-	DBUser     string
-	DBPassword string
-	DBName     string
-	JWTSecret  string
+	AppPort            string
+	DBHost             string
+	DBPort             string
+	DBUser             string
+	DBPassword         string
+	DBName             string
+	JWTSecret          string
+	AttendanceLocation *time.Location
 
 	// 阿里云 OSS
 	OSSEndpoint        string
@@ -28,7 +32,7 @@ var (
 	DeepSeekModel   string
 )
 
-func Load() {
+func Load() error {
 
 	_ = godotenv.Load()
 
@@ -39,6 +43,14 @@ func Load() {
 	DBPassword = getEnv("DB_PASSWORD", "")
 	DBName = getEnv("DB_NAME", "studioattendance")
 	JWTSecret = getEnv("JWT_SECRET", "")
+	if len(JWTSecret) < 32 {
+		return fmt.Errorf("请设置至少 32 字节的 JWT_SECRET")
+	}
+	var err error
+	AttendanceLocation, err = time.LoadLocation(getEnv("ATTENDANCE_TIME_ZONE", "Asia/Shanghai"))
+	if err != nil {
+		return fmt.Errorf("考勤时区无效: %w", err)
+	}
 
 	OSSEndpoint = getEnv("OSS_ENDPOINT", "")
 	OSSRegion = getEnv("OSS_REGION", "")
@@ -49,6 +61,7 @@ func Load() {
 	DeepSeekAPIKey = getEnv("DEEPSEEK_API_KEY", "")
 	DeepSeekBaseURL = getEnv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 	DeepSeekModel = getEnv("DEEPSEEK_MODEL", "deepseek-flash")
+	return nil
 }
 
 func getEnv(key, defaultVal string) string {

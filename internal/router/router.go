@@ -12,7 +12,7 @@ func Setup() *gin.Engine {
 	api := r.Group("/api")
 	user := api.Group("/user")
 	schedule := api.Group("/schedule", middleware.JWTAuth())
-	checkInRecord := api.Group("/record")
+	checkInRecord := api.Group("/record", middleware.JWTAuth())
 
 	handler.RegisterUserRoutes(user, middleware.JWTAuth())
 	handler.RegisterScheduleRoutes(schedule)
