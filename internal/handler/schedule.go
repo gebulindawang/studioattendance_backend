@@ -56,6 +56,8 @@ func failSchedule(c *gin.Context, msg string, err error) {
 		response.Fail(c, http.StatusNotFound, "请求的用户、课表或配置不存在")
 	case errors.Is(err, repository.ErrScheduleUploadLimit), errors.Is(err, repository.ErrScheduleImageChanged):
 		response.Fail(c, http.StatusConflict, err.Error())
+	case errors.Is(err, repository.ErrAttendanceSchema):
+		attendanceFailure(c, msg, err)
 	default:
 		response.FailErr(c, http.StatusInternalServerError, msg, err)
 	}
@@ -247,7 +249,8 @@ func CreateSchedules(c *gin.Context) {
 	if !validateSchedules(c, schedules) {
 		return
 	}
-	if err := repository.ReplaceUserSchedules(userID, schedules, imageID); err != nil {
+	now := time.Now().In(config.AttendanceLocation)
+	if err := repository.ReplaceUserSchedules(c.Request.Context(), userID, schedules, imageID, now); err != nil {
 		failSchedule(c, "保存课表失败", err)
 		return
 	}

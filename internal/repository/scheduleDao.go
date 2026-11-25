@@ -2,6 +2,7 @@ package repository
 
 import (
 	"StudioAttendance_backend/internal/model"
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -50,11 +51,11 @@ func summarizeSchedule(user model.User, uploads []model.ScheduleImage, count int
 		return summary
 	}
 	latest := uploads[len(uploads)-1]
-	summary.LastUploadedAt = latest.CreatedAt
+	summary.LastUploadedAt = latest.UploadTime()
 	if count == 0 {
 		summary.Status = "pending"
 	} else if (latest.Reviewed != nil && !*latest.Reviewed) ||
-		(latest.Reviewed == nil && latest.CreatedAt != nil && confirmedAt != nil && latest.CreatedAt.After(*confirmedAt)) {
+		(latest.Reviewed == nil && summary.LastUploadedAt != nil && confirmedAt != nil && summary.LastUploadedAt.After(*confirmedAt)) {
 		summary.Status = "reparse"
 	}
 	return summary
@@ -67,8 +68,11 @@ func GetScheduleDetail(userID int) (model.ScheduleDetail, error) {
 		if err := tx.Select("id", "username", "nickname").First(&user, userID).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("user_id = ?", userID).Order("id").Find(&detail.Uploads).Error; err != nil {
+		if err := tx.Select("schedules_image.*").Where("user_id = ?", userID).Order("id").Find(&detail.Uploads).Error; err != nil {
 			return err
+		}
+		for i := range detail.Uploads {
+			detail.Uploads[i].CreatedAt = detail.Uploads[i].UploadTime()
 		}
 		if err := tx.Where("user_id = ?", userID).Order("id").Find(&detail.Courses).Error; err != nil {
 			return err
@@ -98,7 +102,9 @@ func ListScheduleMembers() ([]model.ScheduleSummary, error) {
 		}
 
 		var images []model.ScheduleImage
-		if err := tx.Select("id", "user_id", "created_at", "reviewed").Order("id").Find(&images).Error; err != nil {
+		// Older tables omit the nullable metadata fields. The summary can use
+		// the existing uploads and courses while those fields are unknown.
+		if err := tx.Select("schedules_image.*").Order("id").Find(&images).Error; err != nil {
 			return err
 		}
 		uploadsByUser := make(map[int][]model.ScheduleImage)
@@ -130,14 +136,16 @@ func ListScheduleMembers() ([]model.ScheduleSummary, error) {
 	return summaries, err
 }
 
-func lockScheduleOwner(tx *gorm.DB, userID int) error {
+func lockScheduleOwner(tx *gorm.DB, userID int) (model.User, error) {
 	var owner model.User
-	return tx.Select("id").Clauses(clause.Locking{Strength: "UPDATE"}).First(&owner, userID).Error
+	err := tx.Select("id", "role", "status").Clauses(clause.Locking{Strength: "UPDATE"}).First(&owner, userID).Error
+	return owner, err
 }
 
-func ReplaceUserSchedules(userID int, schedules []model.Schedule, imageID *int) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockScheduleOwner(tx, userID); err != nil {
+func ReplaceUserSchedules(ctx context.Context, userID int, schedules []model.Schedule, imageID *int, now time.Time) error {
+	return DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		owner, err := lockScheduleOwner(tx, userID)
+		if err != nil {
 			return err
 		}
 		var latest model.ScheduleImage
@@ -163,9 +171,26 @@ func ReplaceUserSchedules(userID int, schedules []model.Schedule, imageID *int) 
 			return err
 		}
 		if latest.ID > 0 {
-			return tx.Model(&latest).Update("reviewed", true).Error
+			if err := tx.Model(&latest).Update("reviewed", true).Error; err != nil {
+				return err
+			}
 		}
-		return nil
+		if owner.Role != model.RoleMember || owner.Status != model.StatusActive {
+			return nil
+		}
+
+		config, err := loadSemesterConfig(tx)
+		if err != nil {
+			return err
+		}
+		start := monday(now)
+		blocks := attendanceBlocks(config.SectionTime)
+		if len(blocks) == 0 || !hasTermDates(config.Semester, start) {
+			return nil
+		}
+		slots := weekSlots(userID, schedules, config, blocks, start)
+		_, err = reconcileWeekSlots(tx, []int{userID}, slots, start, now)
+		return err
 	})
 }
 
@@ -175,7 +200,7 @@ func UpdateSchedule(schedule model.Schedule) error {
 		if err := tx.Select("id", "user_id").First(&current, schedule.ID).Error; err != nil {
 			return err
 		}
-		if err := lockScheduleOwner(tx, current.UserID); err != nil {
+		if _, err := lockScheduleOwner(tx, current.UserID); err != nil {
 			return err
 		}
 		result := tx.Model(&model.Schedule{}).Where("id = ? AND user_id = ?", current.ID, current.UserID).
@@ -190,7 +215,7 @@ func UpdateSchedule(schedule model.Schedule) error {
 
 func CreateScheduleImage(url string, userID int) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockScheduleOwner(tx, userID); err != nil {
+		if _, err := lockScheduleOwner(tx, userID); err != nil {
 			return err
 		}
 		count, err := countScheduleImages(tx, userID)
@@ -217,7 +242,7 @@ func countScheduleImages(db *gorm.DB, userID int) (int, error) {
 
 func DeleteScheduleByUserId(userID int) error {
 	return DB.Transaction(func(tx *gorm.DB) error {
-		if err := lockScheduleOwner(tx, userID); err != nil {
+		if _, err := lockScheduleOwner(tx, userID); err != nil {
 			return err
 		}
 		if err := tx.Where("user_id = ?", userID).Delete(&model.Schedule{}).Error; err != nil {

@@ -7,67 +7,71 @@ import (
 	"time"
 )
 
-func TestAttendanceScheduleUsesSmallSectionsAndWeekParity(t *testing.T) {
-	day := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
-	semester := &model.Semester{StartDate: day.AddDate(0, 0, -14), EndDate: day.AddDate(0, 0, 90), TotalWeeks: 15}
-	week := attendanceWeek(semester, day)
-	if week != 3 {
-		t.Fatalf("week = %d, want 3", week)
+func TestWeekSlotsSkipAnyConflictingSmallSection(t *testing.T) {
+	wednesday := time.Date(2026, 11, 25, 9, 0, 0, 0, time.FixedZone("CST", 8*60*60))
+	start := monday(wednesday)
+	if date := start.Format(time.DateOnly); date != "2026-11-23" {
+		t.Fatalf("week starts on %s, want Monday 2026-11-23", date)
 	}
-	if got := attendanceWeek(semester, semester.StartDate.AddDate(0, 0, -1)); got != 0 {
-		t.Fatalf("week before the semester = %d, want 0", got)
+	config := model.SemesterConfig{
+		Semester: &model.Semester{
+			StartDate:  start.AddDate(0, 0, -14),
+			EndDate:    start.AddDate(0, 0, 4),
+			TotalWeeks: 3,
+		},
+		SectionTime: []model.SectionTime{
+			{SectionNumber: "2", StartTime: "10:00:00", EndTime: "11:40:00"},
+			{SectionNumber: "1", StartTime: "08:00:00", EndTime: "09:40:00"},
+		},
 	}
-
-	sections := configuredAttendanceSections([]model.SectionTime{
-		{SectionNumber: "3", StartTime: "10:00:00"},
-		{SectionNumber: "2", StartTime: "08:00:00"},
-	}, day)
-	if len(sections) != 4 || sections[0].Section != 3 || sections[1].Section != 4 ||
-		!sections[0].StartTime.Equal(day.Add(8*time.Hour)) || !sections[1].StartTime.Equal(sections[0].StartTime) {
-		t.Fatalf("unexpected mapping of blocks to small sections: %+v", sections)
+	courses := []model.Schedule{
+		{Weekday: 1, StartWeek: 1, EndWeek: 3, WeekType: model.WeekTypeOdd, StartSection: 2, EndSection: 2},
+		{Weekday: 2, StartWeek: 1, EndWeek: 3, WeekType: model.WeekTypeEven, StartSection: 3, EndSection: 4},
 	}
-	markCourseExemptions(sections, []model.Schedule{
-		{Weekday: 1, StartWeek: 1, EndWeek: 5, WeekType: model.WeekTypeOdd, StartSection: 3, EndSection: 4},
-		{Weekday: 1, StartWeek: 1, EndWeek: 5, WeekType: model.WeekTypeEven, StartSection: 5, EndSection: 5},
-		{Weekday: 2, StartWeek: 1, EndWeek: 5, WeekType: model.WeekTypeEvery, StartSection: 6, EndSection: 6},
-	}, day, week)
-	for i, section := range sections {
-		var want int8
-		if i < 2 {
-			want = model.CheckinExempted
+	slots := weekSlots(7, courses, config, attendanceBlocks(config.SectionTime), start)
+	if len(slots) != 9 {
+		t.Fatalf("got %d slots, want 9", len(slots))
+	}
+	for _, slot := range slots {
+		if slot.CheckinDate.After(config.Semester.EndDate) ||
+			(slot.CheckinDate.Equal(start) && slot.Section == 1) ||
+			slot.RecordKind != model.CheckinKindStudio || slot.Status != model.CheckinPending {
+			t.Fatalf("unexpected slot: %+v", slot)
 		}
-		if section.Status != want {
-			t.Errorf("section %d has status %d, want %d", section.Section, section.Status, want)
-		}
+	}
+	if first := slots[0]; first.Section != 2 || first.SlotStart.Hour() != 10 || first.SlotEnd.Minute() != 40 {
+		t.Fatalf("unexpected first block: %+v", first)
 	}
 }
 
-func TestAttendanceWindowBoundaries(t *testing.T) {
-	day := time.Date(2026, 9, 14, 0, 0, 0, 0, time.UTC)
-	section := configuredAttendanceSections([]model.SectionTime{{SectionNumber: "1", StartTime: "08:00:00"}}, day)[0]
+func TestFiveMinuteCheckinWindow(t *testing.T) {
+	start := time.Date(2026, 11, 25, 8, 0, 0, 0, time.UTC)
+	open := start.Add(-5 * time.Minute)
 	cases := []struct {
-		name   string
-		at     time.Time
-		status int8
-		err    error
+		name string
+		now  time.Time
+		want error
 	}{
-		{"before window", section.OpensAt.Add(-time.Nanosecond), 0, ErrCheckinTooEarly},
-		{"opens", section.OpensAt, model.CheckinNormal, nil},
-		{"starts", section.StartTime, model.CheckinNormal, nil},
-		{"late", section.StartTime.Add(time.Nanosecond), model.CheckinLate, nil},
-		{"closes", section.ClosesAt, model.CheckinLate, nil},
-		{"after window", section.ClosesAt.Add(time.Nanosecond), 0, ErrCheckinClosed},
+		{"too early", open.Add(-time.Nanosecond), ErrCheckinTooEarly},
+		{"opens", open, nil},
+		{"before start", start.Add(-time.Nanosecond), nil},
+		{"at start", start, ErrCheckinClosed},
+		{"after start", start.Add(time.Second), ErrCheckinClosed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			status, err := checkinStatus(section, tc.at)
-			if status != tc.status || !errors.Is(err, tc.err) {
-				t.Fatalf("got status %d and error %v, want status %d and error %v", status, err, tc.status, tc.err)
+			if err := checkinWindow(start, tc.now); !errors.Is(err, tc.want) {
+				t.Fatalf("got %v, want %v", err, tc.want)
 			}
 		})
 	}
-	section.Status = model.CheckinExempted
-	if _, err := checkinStatus(section, section.StartTime); !errors.Is(err, ErrCheckinExempted) {
-		t.Fatalf("check-in with a class produced %v, want %v", err, ErrCheckinExempted)
+
+	slot := model.CheckinRecord{SlotStart: &start, Status: model.CheckinPending}
+	if !canRefreshSlot(slot, open.Add(-time.Second)) || canRefreshSlot(slot, open) {
+		t.Fatal("only an unopened pending slot can be adjusted")
+	}
+	slot.Status = model.CheckinNormal
+	if canRefreshSlot(slot, open.Add(-time.Second)) {
+		t.Fatal("a signed slot must be preserved")
 	}
 }

@@ -27,11 +27,19 @@ type Schedule struct {
 }
 
 type ScheduleImage struct {
-	ID        int        `json:"id"`
-	UserID    int        `json:"-"`
-	ImagesUrl string     `json:"url"`
-	CreatedAt *time.Time `json:"uploaded_at"`
-	Reviewed  *bool      `json:"-"`
+	ID              int        `json:"id"`
+	UserID          int        `json:"-"`
+	ImagesUrl       string     `json:"url"`
+	CreatedAt       *time.Time `json:"uploaded_at"`
+	Reviewed        *bool      `json:"-"`
+	LegacyCreatedAt *time.Time `gorm:"column:create_time;->;-:migration" json:"-"`
+}
+
+func (image ScheduleImage) UploadTime() *time.Time {
+	if image.CreatedAt != nil {
+		return image.CreatedAt
+	}
+	return image.LegacyCreatedAt
 }
 
 const MaxScheduleUploads = 3

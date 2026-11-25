@@ -38,19 +38,22 @@ CREATE TABLE IF NOT EXISTS `schedules` (
   KEY `idx_user_weekday` (`user_id`, `weekday`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
--- 没课应到，有课豁免。签到窗口结束后补齐缺勤和豁免。
+-- 工作室签到按大节生成。旧版小节记录的 record_kind 为 0。
 CREATE TABLE IF NOT EXISTS `checkin_records` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `user_id` bigint NOT NULL,
   `checkin_date` date NOT NULL,
   `section` int NOT NULL,
-  `status` tinyint NOT NULL COMMENT '1 正常，2 迟到，3 缺勤，4 请假，5 有课豁免',
+  `status` tinyint NOT NULL COMMENT '0 待签到，1 已签到，2 至 5 为历史状态',
   `checkin_time` datetime NULL,
   `remark` varchar(255) NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `record_kind` tinyint NOT NULL DEFAULT 0 COMMENT '0 历史小节考勤，1 工作室大节签到',
+  `slot_start` datetime NULL,
+  `slot_end` datetime NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_date_section` (`user_id`, `checkin_date`, `section`),
+  UNIQUE KEY `uk_user_date_section_kind` (`user_id`, `checkin_date`, `section`, `record_kind`),
   KEY `idx_date` (`checkin_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -88,6 +91,29 @@ SET @ddl = IF(
     AND table_name = 'schedules_image' AND column_name = 'created_at'),
   'DO 0', 'ALTER TABLE schedules_image ADD COLUMN created_at datetime(6) NULL'
 );
+PREPARE studio_attendance_ddl FROM @ddl;
+EXECUTE studio_attendance_ddl;
+DEALLOCATE PREPARE studio_attendance_ddl;
+
+-- 增加工作室大节字段并替换旧唯一键，让历史小节与新大节可以共存。
+SET @checkin_alter = CONCAT_WS(', ',
+  IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+    AND table_name = 'checkin_records' AND column_name = 'record_kind'),
+    NULL, 'ADD COLUMN record_kind tinyint NOT NULL DEFAULT 0'),
+  IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+    AND table_name = 'checkin_records' AND column_name = 'slot_start'),
+    NULL, 'ADD COLUMN slot_start datetime NULL'),
+  IF(EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE()
+    AND table_name = 'checkin_records' AND column_name = 'slot_end'),
+    NULL, 'ADD COLUMN slot_end datetime NULL'),
+  IF(EXISTS(SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE()
+    AND table_name = 'checkin_records' AND index_name = 'uk_user_date_section_kind'),
+    NULL, 'ADD UNIQUE KEY uk_user_date_section_kind (user_id, checkin_date, section, record_kind)'),
+  IF(EXISTS(SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE()
+    AND table_name = 'checkin_records' AND index_name = 'uk_user_date_section'),
+    'DROP INDEX uk_user_date_section', NULL)
+);
+SET @ddl = IF(@checkin_alter = '', 'DO 0', CONCAT('ALTER TABLE checkin_records ', @checkin_alter));
 PREPARE studio_attendance_ddl FROM @ddl;
 EXECUTE studio_attendance_ddl;
 DEALLOCATE PREPARE studio_attendance_ddl;
