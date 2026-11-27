@@ -49,7 +49,8 @@ func checkIn(c *gin.Context) {
 	case errors.Is(err, repository.ErrCheckinUnavailable):
 		response.Fail(c, http.StatusNotFound, err.Error())
 	case errors.Is(err, repository.ErrCheckinTooEarly), errors.Is(err, repository.ErrCheckinClosed),
-		errors.Is(err, repository.ErrCheckinCourseConflict):
+		errors.Is(err, repository.ErrCheckinCourseConflict), errors.Is(err, repository.ErrCheckinContinuation),
+		errors.Is(err, repository.ErrCheckinPeriodSigned):
 		response.Fail(c, http.StatusConflict, err.Error())
 	default:
 		attendanceFailure(c, "签到失败", err)
