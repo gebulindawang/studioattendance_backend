@@ -97,6 +97,10 @@ func RegisterCheckInRecordRoutes(rg *gin.RouterGroup) {
 	member := middleware.RequireRole(model.RoleMember)
 	rg.GET("/", admin, ListRecord)
 	rg.GET("/week", member, weekAttendance)
+	rg.GET("/me", member, memberAttendance)
 	rg.POST("/:id/checkin", member, checkIn)
+	rg.POST("/:id/makeup", member, submitMakeup)
+	rg.GET("/makeup", admin, listMakeups)
+	rg.PATCH("/makeup/:id", admin, reviewMakeup)
 	rg.PUT("/record", admin, generateWeekAttendance)
 }

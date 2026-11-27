@@ -6,6 +6,7 @@ const (
 	CheckinPending int8 = 0
 	CheckinNormal  int8 = 1
 	CheckinClosed  int8 = 6 // 仅用于展示已结束且未签到的工作室时段
+	CheckinMadeUp  int8 = 7
 )
 
 const CheckinKindStudio int8 = 1
