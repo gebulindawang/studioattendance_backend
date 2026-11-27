@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS `checkin_records` (
   `user_id` bigint NOT NULL,
   `checkin_date` date NOT NULL,
   `section` int NOT NULL,
-  `status` tinyint NOT NULL COMMENT '0 待签到，1 已签到，2 至 5 为历史状态',
+  `status` tinyint NOT NULL COMMENT '0 待签到，1 已签到，2 至 5 为历史状态，7 已补签',
   `checkin_time` datetime NULL,
   `remark` varchar(255) NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -65,6 +65,22 @@ CREATE TABLE IF NOT EXISTS `schedules_image` (
   `reviewed` boolean NULL,
   PRIMARY KEY (`id`),
   KEY `idx_schedule_image_user` (`user_id`, `id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS `checkin_makeup_requests` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `record_id` bigint NOT NULL,
+  `reason` varchar(500) NOT NULL,
+  `status` varchar(16) NOT NULL DEFAULT 'pending',
+  `reviewer_id` bigint NULL,
+  `review_note` varchar(500) NOT NULL DEFAULT '',
+  `reviewed_at` datetime NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_makeup_record` (`record_id`, `id`),
+  KEY `idx_makeup_status` (`status`, `id`),
+  CONSTRAINT `fk_makeup_checkin_record` FOREIGN KEY (`record_id`) REFERENCES `checkin_records` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `semester` (

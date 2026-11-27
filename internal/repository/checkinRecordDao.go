@@ -33,9 +33,11 @@ var (
 )
 
 type AttendanceBlock struct {
-	Section int    `json:"section"`
-	Start   string `json:"start"`
-	End     string `json:"end"`
+	Section    int    `json:"section"`
+	Start      string `json:"start"`
+	End        string `json:"end"`
+	startClock time.Time
+	endClock   time.Time
 }
 
 type WeekAttendanceRecord struct {
@@ -195,7 +197,10 @@ func attendanceBlocks(settings []model.SectionTime) []AttendanceBlock {
 			continue
 		}
 		seen[number] = true
-		blocks = append(blocks, AttendanceBlock{Section: number, Start: setting.StartTime, End: setting.EndTime})
+		blocks = append(blocks, AttendanceBlock{
+			Section: number, Start: setting.StartTime, End: setting.EndTime,
+			startClock: start, endClock: end,
+		})
 	}
 	sort.Slice(blocks, func(i, j int) bool { return blocks[i].Section < blocks[j].Section })
 	return blocks
@@ -253,9 +258,8 @@ func weekSlots(userID int, courses []model.Schedule, config model.SemesterConfig
 	periods := weekAttendancePeriods(courses, config.Semester, blocks, startWeek)
 	slots := make([]model.CheckinRecord, 0, len(periods))
 	for _, period := range periods {
-		date := period.Day.Format(time.DateOnly) + " "
-		start, _ := time.ParseInLocation(time.DateTime, date+period.First.Start, period.Day.Location())
-		end, _ := time.ParseInLocation(time.DateTime, date+period.Last.End, period.Day.Location())
+		start := clockOnDay(period.Day, period.First.startClock)
+		end := clockOnDay(period.Day, period.Last.endClock)
 		slots = append(slots, model.CheckinRecord{
 			UserID: uint(userID), CheckinDate: period.Day, Section: period.First.Section,
 			Status: model.CheckinPending, RecordKind: model.CheckinKindStudio, SlotStart: &start, SlotEnd: &end,
@@ -264,9 +268,19 @@ func weekSlots(userID int, courses []model.Schedule, config model.SemesterConfig
 	return slots
 }
 
+func clockOnDay(day, clock time.Time) time.Time {
+	year, month, date := day.Date()
+	hour, minute, second := clock.Clock()
+	return time.Date(year, month, date, hour, minute, second, clock.Nanosecond(), day.Location())
+}
+
+func checkinOpensAt(start time.Time) time.Time {
+	return start.Add(-checkinLead)
+}
+
 func checkinWindow(start, now time.Time) error {
 	switch {
-	case now.Before(start.Add(-checkinLead)):
+	case now.Before(checkinOpensAt(start)):
 		return ErrCheckinTooEarly
 	case !now.Before(start):
 		return ErrCheckinClosed
@@ -285,18 +299,23 @@ func attendanceSlotKey(record model.CheckinRecord) slotKey {
 	return slotKey{record.UserID, record.CheckinDate.Format(time.DateOnly), record.Section}
 }
 
-func studioWeekRecords(tx *gorm.DB, ids []int, weekStart time.Time, records *[]model.CheckinRecord) error {
+func studioWeekRecords(tx *gorm.DB, ids []int, weekStart time.Time) ([]model.CheckinRecord, error) {
+	var records []model.CheckinRecord
 	err := tx.Where("record_kind = ? AND user_id IN ? AND checkin_date >= ? AND checkin_date < ?", model.CheckinKindStudio,
 		ids, weekStart.Format(time.DateOnly), weekStart.AddDate(0, 0, 7).Format(time.DateOnly)).
-		Order("checkin_date, section").Find(records).Error
-	return attendanceDBError(err)
+		Order("checkin_date, section").Find(&records).Error
+	return records, attendanceDBError(err)
 }
 
 func attendanceDBError(err error) error {
 	var dbErr *mysql.MySQLError
-	if errors.As(err, &dbErr) && dbErr.Number == 1054 &&
-		(strings.Contains(dbErr.Message, "record_kind") || strings.Contains(dbErr.Message, "slot_start") || strings.Contains(dbErr.Message, "slot_end")) {
-		return errors.Join(ErrAttendanceSchema, err)
+	if errors.As(err, &dbErr) {
+		missingSlotColumn := dbErr.Number == 1054 &&
+			(strings.Contains(dbErr.Message, "record_kind") || strings.Contains(dbErr.Message, "slot_start") || strings.Contains(dbErr.Message, "slot_end"))
+		missingMakeupTable := dbErr.Number == 1146 && strings.Contains(dbErr.Message, "checkin_makeup_requests")
+		if missingSlotColumn || missingMakeupTable {
+			return errors.Join(ErrAttendanceSchema, err)
+		}
 	}
 	return err
 }
@@ -308,6 +327,10 @@ func hasTermDates(semester *model.Semester, weekStart time.Time) bool {
 		}
 	}
 	return false
+}
+
+func isCompletedCheckin(record model.CheckinRecord) bool {
+	return record.Status == model.CheckinNormal || record.Status == model.CheckinMadeUp
 }
 
 func weekCheckinRecords(userID uint, stored []model.CheckinRecord, periods []attendancePeriod) ([]WeekAttendanceRecord, int) {
@@ -328,8 +351,8 @@ func weekCheckinRecords(userID uint, stored []model.CheckinRecord, periods []att
 			}
 			delete(bySlot, key)
 			// Before periods were merged, a member could sign in during a later block.
-			if chosen.Status != model.CheckinNormal &&
-				(record.Status == model.CheckinNormal || (section == first && record.SlotStart != nil)) {
+			if !isCompletedCheckin(chosen) &&
+				(isCompletedCheckin(record) || (section == first && record.SlotStart != nil)) {
 				chosen = record
 			}
 		}
@@ -339,7 +362,7 @@ func weekCheckinRecords(userID uint, stored []model.CheckinRecord, periods []att
 	}
 	generatedPeriods := len(records)
 	for _, record := range stored {
-		if _, outsidePeriod := bySlot[attendanceSlotKey(record)]; outsidePeriod && record.Status == model.CheckinNormal {
+		if _, outsidePeriod := bySlot[attendanceSlotKey(record)]; outsidePeriod && isCompletedCheckin(record) {
 			records = append(records, WeekAttendanceRecord{record, record.Section, record.Section})
 		}
 	}
@@ -369,8 +392,8 @@ func GetWeekAttendance(userID int, now time.Time) (WeekAttendance, error) {
 		if err := tx.Where("user_id = ?", userID).Find(&courses).Error; err != nil {
 			return err
 		}
-		var stored []model.CheckinRecord
-		if err := studioWeekRecords(tx, []int{userID}, start, &stored); err != nil {
+		stored, err := studioWeekRecords(tx, []int{userID}, start)
+		if err != nil {
 			return err
 		}
 
@@ -402,7 +425,7 @@ func GetWeekAttendance(userID int, now time.Time) (WeekAttendance, error) {
 		for i := range result.Records {
 			record := &result.Records[i]
 			if record.SlotStart != nil {
-				opensAt := record.SlotStart.Add(-checkinLead)
+				opensAt := checkinOpensAt(*record.SlotStart)
 				record.OpensAt = &opensAt
 			}
 		}
@@ -413,7 +436,7 @@ func GetWeekAttendance(userID int, now time.Time) (WeekAttendance, error) {
 
 func canRefreshSlot(record model.CheckinRecord, now time.Time) bool {
 	return record.Status == model.CheckinPending && record.CheckinTime == nil &&
-		record.SlotStart != nil && now.Before(record.SlotStart.Add(-checkinLead))
+		record.SlotStart != nil && now.Before(checkinOpensAt(*record.SlotStart))
 }
 
 // Callers hold the selected members' row locks while applying changes.
@@ -422,8 +445,8 @@ func reconcileWeekSlots(tx *gorm.DB, ids []int, desired []model.CheckinRecord, s
 	if len(ids) == 0 {
 		return result, nil
 	}
-	var stored []model.CheckinRecord
-	if err := studioWeekRecords(tx, ids, start, &stored); err != nil {
+	stored, err := studioWeekRecords(tx, ids, start)
+	if err != nil {
 		return result, err
 	}
 	existing := make(map[slotKey]model.CheckinRecord, len(stored))
@@ -440,7 +463,7 @@ func reconcileWeekSlots(tx *gorm.DB, ids []int, desired []model.CheckinRecord, s
 			continue
 		}
 		delete(existing, key)
-		if canRefreshSlot(previous, now) && now.Before(slot.SlotStart.Add(-checkinLead)) &&
+		if canRefreshSlot(previous, now) && now.Before(checkinOpensAt(*slot.SlotStart)) &&
 			(!previous.SlotStart.Equal(*slot.SlotStart) || previous.SlotEnd == nil || !previous.SlotEnd.Equal(*slot.SlotEnd)) {
 			update := tx.Model(&previous).Updates(map[string]any{"slot_start": slot.SlotStart, "slot_end": slot.SlotEnd})
 			if update.Error != nil {
@@ -538,6 +561,53 @@ func GenerateWeekAttendance(ctx context.Context, ids []int, now time.Time) (Week
 	return result, attendanceDBError(err)
 }
 
+func checkinPeriod(tx *gorm.DB, record model.CheckinRecord) (attendancePeriod, error) {
+	config, err := loadSemesterConfig(tx)
+	if err != nil {
+		return attendancePeriod{}, err
+	}
+	week := attendanceWeek(config.Semester, record.CheckinDate)
+	if week == 0 {
+		return attendancePeriod{}, ErrCheckinCourseConflict
+	}
+	var courses []model.Schedule
+	if err := tx.Where("user_id = ?", record.UserID).Find(&courses).Error; err != nil {
+		return attendancePeriod{}, err
+	}
+	if len(courses) == 0 {
+		return attendancePeriod{}, ErrCheckinCourseConflict
+	}
+	for _, period := range dailyAttendancePeriods(courses, attendanceBlocks(config.SectionTime), record.CheckinDate, week) {
+		if record.Section < period.First.Section || record.Section > period.Last.Section {
+			continue
+		}
+		if record.Section != period.First.Section {
+			return attendancePeriod{}, ErrCheckinContinuation
+		}
+		return period, nil
+	}
+	return attendancePeriod{}, ErrCheckinCourseConflict
+}
+
+func checkPeriodIncomplete(tx *gorm.DB, record model.CheckinRecord, period attendancePeriod) error {
+	if period.Last.Section == record.Section {
+		return nil
+	}
+	var completed int64
+	err := tx.Model(&model.CheckinRecord{}).
+		Where("user_id = ? AND record_kind = ? AND checkin_date = ? AND section > ? AND section <= ?",
+			record.UserID, model.CheckinKindStudio, record.CheckinDate.Format(time.DateOnly), record.Section, period.Last.Section).
+		Where("(status = ? AND checkin_time IS NOT NULL) OR status = ?", model.CheckinNormal, model.CheckinMadeUp).
+		Count(&completed).Error
+	if err != nil {
+		return err
+	}
+	if completed > 0 {
+		return ErrCheckinPeriodSigned
+	}
+	return nil
+}
+
 func CheckIn(userID int, id uint, now time.Time) (model.CheckinRecord, error) {
 	var record model.CheckinRecord
 	err := DB.Transaction(func(tx *gorm.DB) error {
@@ -550,53 +620,21 @@ func CheckIn(userID int, id uint, now time.Time) (model.CheckinRecord, error) {
 		if err := tx.Where("user_id = ? AND record_kind = ?", userID, model.CheckinKindStudio).First(&record, id).Error; err != nil {
 			return err
 		}
-		if record.Status == model.CheckinNormal && record.CheckinTime != nil {
+		if (record.Status == model.CheckinNormal && record.CheckinTime != nil) || record.Status == model.CheckinMadeUp {
 			return nil
 		}
 		if record.Status != model.CheckinPending || record.SlotStart == nil {
 			return ErrCheckinUnavailable
 		}
-		config, err := loadSemesterConfig(tx)
+		period, err := checkinPeriod(tx, record)
 		if err != nil {
 			return err
-		}
-		var courses []model.Schedule
-		if err := tx.Where("user_id = ?", userID).Find(&courses).Error; err != nil {
-			return err
-		}
-		week := attendanceWeek(config.Semester, record.CheckinDate)
-		if len(courses) == 0 || week == 0 {
-			return ErrCheckinCourseConflict
-		}
-		lastSection := 0
-		for _, period := range dailyAttendancePeriods(courses, attendanceBlocks(config.SectionTime), record.CheckinDate, week) {
-			if record.Section < period.First.Section || record.Section > period.Last.Section {
-				continue
-			}
-			if record.Section != period.First.Section {
-				return ErrCheckinContinuation
-			}
-			lastSection = period.Last.Section
-			break
-		}
-		if lastSection == 0 {
-			return ErrCheckinCourseConflict
 		}
 		if err := checkinWindow(*record.SlotStart, now); err != nil {
 			return err
 		}
-		if lastSection > record.Section {
-			var signed int64
-			err := tx.Model(&model.CheckinRecord{}).
-				Where("user_id = ? AND record_kind = ? AND checkin_date = ? AND section > ? AND section <= ? AND status = ? AND checkin_time IS NOT NULL",
-					userID, model.CheckinKindStudio, record.CheckinDate.Format(time.DateOnly), record.Section, lastSection, model.CheckinNormal).
-				Count(&signed).Error
-			if err != nil {
-				return err
-			}
-			if signed > 0 {
-				return ErrCheckinPeriodSigned
-			}
+		if err := checkPeriodIncomplete(tx, record, period); err != nil {
+			return err
 		}
 		checkedAt := now.Truncate(time.Second)
 		result := tx.Model(&record).

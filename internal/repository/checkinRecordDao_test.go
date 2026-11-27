@@ -139,3 +139,33 @@ func TestFiveMinuteCheckinWindow(t *testing.T) {
 		t.Fatal("a signed slot must be preserved")
 	}
 }
+
+func TestMakeupEligibleOnlyAfterAnUnrecordedStudioSlotStarts(t *testing.T) {
+	start := time.Date(2026, 11, 27, 13, 0, 0, 0, time.UTC)
+	record := model.CheckinRecord{RecordKind: model.CheckinKindStudio, SlotStart: &start}
+	if makeupEligible(record, start.Add(-time.Nanosecond)) || !makeupEligible(record, start) {
+		t.Fatal("makeup should become available exactly when the normal window closes")
+	}
+	record.Status = model.CheckinMadeUp
+	if makeupEligible(record, start) {
+		t.Fatal("an approved makeup must not be eligible again")
+	}
+	record.Status, record.RecordKind = model.CheckinPending, 0
+	if makeupEligible(record, start) {
+		t.Fatal("legacy records must not accept makeup requests")
+	}
+}
+
+func TestWeekCheckinRecordsIncludeApprovedMakeup(t *testing.T) {
+	day := time.Date(2026, 11, 27, 0, 0, 0, 0, time.UTC)
+	start := day.Add(13 * time.Hour)
+	periods := []attendancePeriod{{Day: day, First: AttendanceBlock{Section: 3}, Last: AttendanceBlock{Section: 4}}}
+	stored := []model.CheckinRecord{
+		{ID: 1, UserID: 7, CheckinDate: day, Section: 3, SlotStart: &start},
+		{ID: 2, UserID: 7, CheckinDate: day, Section: 4, Status: model.CheckinMadeUp},
+	}
+	records, generated := weekCheckinRecords(7, stored, periods)
+	if generated != 1 || len(records) != 1 || records[0].ID != 2 || records[0].CheckinTime != nil {
+		t.Fatalf("expected one completed period without a fabricated check-in time, got %+v", records)
+	}
+}
